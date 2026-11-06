@@ -8,13 +8,15 @@
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
     "seed": "node src/seed.mjs",
-    "test": "node --env-file=.env.test --test --test-reporter=spec \"tests/**/*.test.mjs\"",
-    "test:coverage": "node --env-file=.env.test --test --experimental-test-coverage \"tests/**/*.test.mjs\""
+    "test": "node --env-file=.env.test --import ./tests/setup.mjs --test --test-reporter=spec \"tests/**/*.test.mjs\"",
+    "test:coverage": "node --env-file=.env.test --import ./tests/setup.mjs --test --experimental-test-coverage \"tests/**/*.test.mjs\""
   },
   "dependencies": {
     "amqplib": "^2.2.0",
     "express": "^5.2.1",
     "nodemailer": "^10.0.14",
+    "pg": "^8.23.1",
+    "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.8",
     "sqlite3": "^5.1.7",
     "winston": "^3.19.0",

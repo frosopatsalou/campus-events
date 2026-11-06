@@ -1,97 +1,134 @@
 # Campus Events
 
-Starter project for **Advanced Development** (Thomas More – International Experience Design, year 3).
+Campus event browsing and registration for the Advanced Development assignment.
+Vue 3 frontend, Express 5 API, Sequelize, SQLite locally and PostgreSQL/Supabase in production.
 
-A small but complete web app: students browse campus events and register for them.
+## Run locally
 
-- **api/** : REST API: Node.js, Express 5, Sequelize + SQLite, Zod
-- **web/** : frontend: Vue 3, Vue Router, Vite
+Use Node.js 24 LTS (CI and Docker use this version), then:
 
-It works out of the box, and it has tests. It is also the kind of code you will meet in your first job:
-the whole API is one long file. Your job is to **clean it up, ship it to production, fix it and add the hard
-parts**
-
-## Quick start
-
-You need **Node.js 22.12 or newer** (`node -v`) and Git.
-
-```bash
-git clone <your-fork-url>
-cd campus-events
-npm install        # installs api + web in one go
-npm run dev        # starts both
+```sh
+npm ci
+npm run dev
 ```
 
-Open **http://localhost:5173**. The API runs on http://localhost:3000/api.
-The first start fills the database with demo events. `npm run seed` resets it.
+Open http://localhost:5173. The API runs on port 3000. An empty database receives demo events.
+Optional settings go in api/.env; copy api/.env.example. Never commit credentials.
+The default SQLite file is api/data/events.sqlite regardless of the working directory.
 
-Later parts need a few services. You never need them to run the tests.
+| Command | Purpose |
+| --- | --- |
+| npm run check | Lint, API tests and frontend tests |
+| npm run build | Build the Vue frontend |
+| npm start | Run the API and built frontend together |
+| npm run seed | **Destructively reset** the configured database tables with demo data |
 
-| Service | Local | Setting in `api/.env` |
-|---|---|---|
-| RabbitMQ | `docker compose up -d rabbitmq` | `AMQP_URL` |
-| Redis | `docker compose up -d redis` | `REDIS_URL` |
-| Identity provider | a free Auth0 tenant | `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_CLIENT_ID` |
+For a production-style local check, run npm run build and npm start, then visit http://localhost:3000.
+The API serves the compiled frontend and handles Vue history URLs such as /stats.
 
-## Scripts (run from the root folder)
+## Backend structure
 
-| Script | What it does |
-|---|---|
-| `npm run dev` | API + frontend with auto-reload |
-| `npm test` | All tests: API (node:test + supertest) and frontend (Vitest) |
-| `npm run lint` | ESLint for the whole project |
-| `npm run check` | Lint + tests. **The pipeline runs exactly this. It must be green before you hand in.** |
-| `npm run seed` | Reset the database to the demo data |
-| `npm run build` | Production build of the frontend |
+Requests follow routes → validation → controllers → services → repositories → models/database.
 
-## How it fits together
+- api/src/config: environment validation and logging. Only env.mjs reads process.env.
+- api/src/routes and validation: URL wiring and reusable Zod schemas.
+- api/src/controllers: HTTP status codes and response formatting.
+- api/src/services: event rules and background mail delivery; no Express or Sequelize imports.
+- api/src/repositories: database queries, transactions, demo data and the mail outbox.
+- api/src/models and db: table definitions and the configured connection.
+- api/src/cache: bounded, expiring read cache with invalidation protection.
+- api/src/mail: SMTP and HTTPS provider adapters.
+- api/src/middleware and errors: consistent error responses and validation middleware.
 
-```
-browser ──► web (Vite, :5173) ──/api/*──► api (Express, :3000) ──► SQLite (api/data/events.sqlite)
-```
+Existing URLs, response bodies and error shapes are preserved. Full events now correctly reject
+additional registrations. A unique event/email database index prevents duplicate subscriptions.
+Database access is serialized within this single application process, including seat checks and writes.
+Statistics use grouped registration counts rather than one registration query per event.
 
-In development Vite forwards every `/api/...` request to the API (see `web/vite.config.js`),
-so the browser only talks to one address and you don't need CORS.
+## Reliable confirmation email
 
-### api/
+Registration and its pending MailJob are saved in one database transaction. The HTTP request does
+not contact the mail provider. If storing either row fails, neither is committed. Provider outages
+therefore cannot undo an already successful registration.
 
-**Today** the whole API lives in one file:
+The in-process worker polls persisted jobs every five seconds. Failure increments the attempt
+counter and schedules exponential backoff, capped at one hour. Pending jobs survive restarts.
+A new worker resumes delivery when the application starts again. Only one batch runs at a time.
+Logs contain job IDs and attempt counts rather than recipient names, addresses or provider secrets.
 
-```
-api/src/app.mjs      settings, database + models, validation, routes, business rules, error handling
-api/src/server.mjs   starts the app (and adds demo data to an empty database)
-api/src/seed.mjs     npm run seed: reset the database
-```
+Set RESEND_API_KEY and MAIL_FROM for HTTPS delivery through Resend. Alternatively set SMTP_URL
+and MAIL_FROM for Nodemailer SMTP. HTTPS takes priority when both are configured. No extra SDK
+is required for HTTPS. MAIL_FROM must be an address your provider allows to send.
 
-Prefered:
+Delivery is at least once: an SMTP acceptance followed by a process crash before recording success
+can cause a duplicate email. Stable Message-ID values help identify retries, but do not guarantee
+deduplication. Resend requests also use a stable idempotency key; its documented retention is 24 hours.
+This is not a promise of exactly-once delivery. If no provider is configured, registrations still work
+and messages remain queued. Configure a real provider before submission.
 
-```
-routes/        URL + validation → controller        (no logic)
-controllers/   HTTP in/out, picks the status code    (thin)
-services/      business rules, throws AppErrors      (no Express, no SQL)
-repositories/  data access via Sequelize             (no rules)
-models/ db/    tables, connection, demo data
-config/        the only place that reads process.env
-```
+## GET caching
 
-The integration tests in `api/tests/integration` only talk HTTP. They pass before your refactoring,
-and they must still pass after it, without changing them.
+Event lists, event details and registration lists use a server-side in-memory cache. Statistics cache
+their database inputs and calculate the time-dependent open/past status on each response. The health
+endpoint deliberately checks the database every time instead of returning a cached success.
 
-| Method | URL | |
-|---|---|---|
-| GET | `/api/health` | Health check |
-| GET / POST | `/api/events` | List / create |
-| GET / PATCH / DELETE | `/api/events/:id` | One event (incl. `registered`, `spotsLeft`) |
-| GET / POST | `/api/events/:id/registrations` | List / register `{ name, email }` |
-| GET | `/api/stats` | Occupancy per event |
+The default TTL is 30 seconds, with a maximum of 500 entries. Every successful event create, update,
+delete or registration clears the cache after the transaction commits. Failed writes do not invalidate.
+A generation counter prevents an older in-flight read from filling the cache after invalidation.
+Values are cloned so callers cannot accidentally modify cached results. API responses use
+Cache-Control: no-store to prevent independent browser/proxy caches hiding successful writes.
 
-Errors always have this shape: `{ "error": { "code", "message", "details?" } }`.
+This implementation targets one server process/instance. All ordinary writes must go through the
+application. Direct SQL edits can remain cached until TTL expiry; multiple app instances would need
+shared invalidation and database-level concurrency control before scaling.
 
-### web/
+## Deploy: Render + Supabase
 
-```
-api/          client.js (fetch + ApiError) and events.js (one function per endpoint)
-views/        one component per page, registered in router.js
-components/   reusable pieces: EventCard, SeatMeter, RegistrationForm, ErrorMessage
-styles.css    design tokens at the top, change those first
-```
+render.yaml prepares a free Node web service named campus-events-frosopatsalou. No deployment
+has been created merely by adding this file. The final hostname depends on availability; retain a
+name without the prohibited branding specified for this assignment.
+
+1. After review approval, publish this project in your own GitHub repository.
+2. Create or select a dedicated Supabase project. In Connect, copy the PostgreSQL **session pooler**
+   URL (IPv4-compatible). URL-encode special characters in the database password.
+3. In Render create a Blueprint from that repository. It builds with npm ci, npm run check and
+   npm run build, then starts with npm start. Checks explicitly use NODE_ENV=test
+   so Vue's test utilities load their testing behavior. Use one instance.
+4. Enter DATABASE_URL, RESEND_API_KEY and MAIL_FROM as private Render environment variables.
+   These must never appear in frontend VITE_ variables, source control or public submission notes.
+   Use a provider-verified sending domain/address that permits mail to the people testing the app.
+   Resend's default testing sender has recipient restrictions; it is not unrestricted public email.
+5. PostgreSQL uses verified TLS. If required, set DATABASE_CA_CERT to the Supabase CA certificate
+   in PEM format. Do not disable certificate verification to work around certificate errors.
+6. The application creates its tables inside campus_events, outside Supabase's default exposed
+   public schema. Do not expose this schema through the Supabase Data API. The Vue browser only
+   talks to Express; it receives no database credentials.
+7. Check /api/health, list events, register using a real permitted recipient and verify receipt.
+   Check updated seats and statistics. Restart the service and confirm the registration persists.
+
+Render's free instance can sleep after inactivity, so first requests and queued mail may wait for
+the instance to wake. SQLite is only for local development on this deployment: Render's free
+filesystem is ephemeral. Supabase stores production registrations and mail jobs. Free-tier quotas
+and inactivity policies still apply; check accounts before the teacher evaluates the application.
+
+Dockerfile is an alternative for a Node-compatible host. Build with docker build -t campus-events .
+and run with port 3000 exposed, private environment settings and (if using SQLite) a persistent
+volume mounted at /var/data. Docker must be installed separately.
+
+References: [Render Express deployment](https://render.com/docs/deploy-node-express-app),
+[Render free limitations](https://render.com/docs/free),
+[Supabase connections](https://supabase.com/docs/guides/database/connecting-to-postgres),
+[Nodemailer SMTP](https://nodemailer.com/smtp),
+[Resend API](https://resend.com/docs/api-reference/emails/send-email),
+[Resend idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys).
+
+## Assignment sources and submission
+
+The Stack Overflow sources used and why are recorded in SOURCES.md.
+SUBMISSION.md lists the required links and must be completed with actual URLs after publishing.
+Do not submit planned URLs as working deployment links.
+
+The original HTTP integration tests in api/tests/integration are unchanged. Additional tests cover
+provider outages/retries, atomic rollback, duplicate registration races, final-seat contention,
+cache expiry, invalidation after mutations, stale in-flight reads, time-sensitive statistics,
+bounded cache storage, SMTP protocol delivery and HTTPS provider behavior.

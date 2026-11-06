@@ -1,0 +1,21 @@
+# Free app host; data lives in Supabase, not Render's ephemeral filesystem.
+services:
+  - type: web
+    name: campus-events-frosopatsalou
+    runtime: node
+    plan: free
+    numInstances: 1
+    buildCommand: npm ci && NODE_ENV=test npm run check && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
