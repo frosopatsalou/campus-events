@@ -29,3 +29,7 @@
   — HTTPS request contract without adding an SDK.
 - [Resend idempotency keys](https://resend.com/docs/dashboard/emails/idempotency-keys)
   — Safe retries within the provider's documented 24-hour retention window.
+- [Supabase TLS verification](https://supabase.com/docs/guides/platform/ssl-enforcement)
+  — Provider CA certificate for a verified encrypted database connection.
+- [Brevo SMTP configuration](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP)
+  — SMTP login/key credentials and the alternative port used by the hosted sender.

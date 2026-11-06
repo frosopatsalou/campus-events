@@ -92,9 +92,15 @@ name without the prohibited branding specified for this assignment.
 2. Create or select a dedicated Supabase project. In Connect, copy the PostgreSQL **session pooler**
    URL (IPv4-compatible). URL-encode special characters in the database password.
 3. In Render create a Blueprint from that repository. It builds with npm ci, npm run check and
-   npm run build, then starts with npm start. Checks explicitly use NODE_ENV=test
+   npm run build, then starts with npm start. Dependency installation uses
+   npm ci --include=dev so production-mode hosting still installs the build/test tools.
+   Checks explicitly use NODE_ENV=test
    so Vue's test utilities load their testing behavior. Use one instance.
-4. Enter DATABASE_URL, RESEND_API_KEY and MAIL_FROM as private Render environment variables.
+4. Enter DATABASE_URL, SMTP_URL and MAIL_FROM as private Render environment variables.
+   For Brevo SMTP on Render Free, use port 2525 with requireTLS=true and URL-encoded
+   SMTP login/key credentials. A Brevo SMTP key is different from an API key.
+   Verify the sender address with the provider.
+   RESEND_API_KEY remains an alternative HTTPS provider setting; leave it absent when using SMTP.
    These must never appear in frontend VITE_ variables, source control or public submission notes.
    Use a provider-verified sending domain/address that permits mail to the people testing the app.
    Resend's default testing sender has recipient restrictions; it is not unrestricted public email.
@@ -119,6 +125,8 @@ References: [Render Express deployment](https://render.com/docs/deploy-node-expr
 [Render free limitations](https://render.com/docs/free),
 [Supabase connections](https://supabase.com/docs/guides/database/connecting-to-postgres),
 [Nodemailer SMTP](https://nodemailer.com/smtp),
+[Brevo SMTP](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP),
+[Supabase TLS](https://supabase.com/docs/guides/platform/ssl-enforcement),
 [Resend API](https://resend.com/docs/api-reference/emails/send-email),
 [Resend idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys).
 
