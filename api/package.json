@@ -12,6 +12,7 @@
     "test:coverage": "node --env-file=.env.test --import ./tests/setup.mjs --test --experimental-test-coverage \"tests/**/*.test.mjs\""
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "amqplib": "^2.2.0",
     "express": "^5.2.1",
     "nodemailer": "^10.0.14",
