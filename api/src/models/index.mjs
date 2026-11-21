@@ -24,3 +24,15 @@ export const MailJob = sequelize.define('MailJob', {
   nextAttemptAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   sentAt: { type: DataTypes.DATE, allowNull: true }
 });
+
+// Public, durable notification log. Never store participant details here.
+export const Notification = sequelize.define('Notification', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  type: { type: DataTypes.STRING, allowNull: false },
+  payload: { type: DataTypes.JSON, allowNull: false }
+});
+
+// One database lock orders writes across API instances (not just within Node).
+export const ChangeLock = sequelize.define('ChangeLock', {
+  id: { type: DataTypes.INTEGER, primaryKey: true }
+}, { timestamps: false });
