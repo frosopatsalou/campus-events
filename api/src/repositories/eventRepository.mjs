@@ -1,4 +1,5 @@
-import { Event, Registration, MailJob } from '../models/index.mjs';
+import { Event, Registration, MailJob, Notification, ChangeLock } from '../models/index.mjs';
+import { Op, Transaction } from 'sequelize';
 import { sequelize } from '../db/connection.mjs';
 
 // SQLite shares one connection in tests. Serialize access so readers cannot see
@@ -31,9 +32,25 @@ function scoped(transaction) {
     registrations: async (eventId) => (await Registration.findAll({ ...options, where: { eventId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] })).map(plain),
     registered: async (eventId, email) => plain(await Registration.findOne({ ...options, where: { eventId, email } })),
     register: async (data) => plain(await Registration.create(data, options)),
-    enqueue: (payload) => MailJob.create({ payload }, options)
+    enqueue: (payload) => MailJob.create({ payload }, options),
+    notify: (type, payload) => Notification.create({ type, payload }, options),
+    cursor: async () => String((await Notification.findOne({ ...options,
+      attributes: ['id'], order: [['id', 'DESC']]
+    }))?.id ?? 0),
+    changes: async (cursor) => (await Notification.findAll({ ...options,
+      where: { id: { [Op.gt]: cursor } }, order: [['id', 'ASC']], limit: 100
+    })).map((row) => ({ id: String(row.id), type: row.type, ...row.payload }))
   };
 }
 export const eventRepository = Object.fromEntries(Object.entries(scoped()).map(([name, fn]) => [name, (...args) => withDatabase(() => fn(...args))]));
-eventRepository.transaction = (work) => withDatabase(() => sequelize.transaction((transaction) => work(scoped(transaction))));
+eventRepository.transaction = (work) => withDatabase(() => sequelize.transaction({
+  ...(sequelize.getDialect() === 'sqlite' && { type: Transaction.TYPES.IMMEDIATE })
+}, async (transaction) => {
+  // PostgreSQL locks the shared startup row; SQLite locks on BEGIN IMMEDIATE.
+  if (sequelize.getDialect() === 'postgres') {
+    const lock = await ChangeLock.findByPk(1, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!lock) throw new Error('Database change lock has not been initialized');
+  }
+  return work(scoped(transaction));
+}));
 export const checkDatabase = () => withDatabase(() => sequelize.authenticate());
