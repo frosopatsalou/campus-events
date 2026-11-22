@@ -20,7 +20,11 @@ export const eventService = {
     const registered = await repository.count(id);
     return { ...event, registered, spotsLeft: Math.max(event.capacity - registered, 0) };
   }),
-  create: (data) => mutate((repo) => repo.create(data)),
+  create: (data) => mutate(async (repo) => {
+    const event = await repo.create(data);
+    await repo.notify('event.created', { eventId: event.id, title: event.title });
+    return event;
+  }),
   update: (id, data) => mutate(async (repo) => {
     await requireEvent(repo, id);
     return repo.update(id, data);
@@ -40,6 +44,9 @@ export const eventService = {
     const registration = await repo.register({ eventId: id, ...data });
     await repo.enqueue({ to: data.email, subject: 'You are registered for ' + event.title,
       text: 'Hi ' + data.name + ',\n\nYour registration for ' + event.title + ' is confirmed.\nLocation: ' + event.location + '\nStarts: ' + new Date(event.startsAt).toISOString() });
+    const registered = await repo.count(id);
+    await repo.notify('registration.created', { eventId: event.id, title: event.title,
+      registered, capacity: event.capacity, spotsLeft: Math.max(event.capacity - registered, 0) });
     return registration;
   }),
   // Cache data, calculate the clock-dependent status on every request.
