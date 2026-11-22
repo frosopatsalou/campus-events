@@ -1,5 +1,11 @@
 <script setup>
 import { RouterLink, RouterView } from 'vue-router';
+import { onMounted, onUnmounted } from 'vue';
+import { startLiveEvents } from './live/events.js';
+import EventToasts from './components/EventToasts.vue';
+let stop;
+onMounted(() => { stop = startLiveEvents(); });
+onUnmounted(() => stop?.());
 </script>
 
 <template>
@@ -14,4 +20,5 @@ import { RouterLink, RouterView } from 'vue-router';
   <main class="page">
     <RouterView />
   </main>
+  <EventToasts />
 </template>
