@@ -13,6 +13,7 @@ export const env = z.object({
   DB_STORAGE: z.string().default(fileURLToPath(new URL('../../data/events.sqlite', import.meta.url))),
   DATABASE_URL: z.url().optional(),
   DATABASE_CA_CERT: z.string().optional(),
+  MCP_ALLOWED_HOSTS: z.string().default('localhost,127.0.0.1,campus-events-frosopatsalou.onrender.com'),
   SMTP_URL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   MAIL_FROM: z.string().default('Campus Events <events@localhost>'),
