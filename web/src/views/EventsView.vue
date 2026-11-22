@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { liveEvents } from '../live/events.js';
 import { RouterLink } from 'vue-router';
 import { getEvents } from '../api/events.js';
 import ErrorMessage from '../components/ErrorMessage.vue';
@@ -9,13 +10,16 @@ import { isPast } from '../utils/format.js';
 const events = ref([]);
 const loading = ref(true);
 const error = ref(null);
+watch(liveEvents, (rows) => { if (rows) events.value = rows; });
 
 const upcoming = computed(() => events.value.filter((event) => !isPast(event.startsAt)));
 const past = computed(() => events.value.filter((event) => isPast(event.startsAt)));
 
 onMounted(async () => {
+  const before = liveEvents.value;
   try {
-    events.value = await getEvents();
+    const rows = await getEvents();
+    events.value = liveEvents.value !== before ? liveEvents.value : rows;
   } catch (err) {
     error.value = err;
   } finally {

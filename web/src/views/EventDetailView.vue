@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { liveEvents } from '../live/events.js';
 import { RouterLink } from 'vue-router';
 import { getEvent, getRegistrations } from '../api/events.js';
 import ErrorMessage from '../components/ErrorMessage.vue';
@@ -14,10 +15,19 @@ const props = defineProps({
 const event = ref(null);
 const registrations = ref([]);
 const error = ref(null);
+function applyLive(rows) {
+  if (!rows) return;
+  const current = rows.find((row) => row.id === Number(props.id));
+  if (current) event.value = { ...current, spotsLeft: Math.max(current.capacity - current.registered, 0) };
+  else event.value = null;
+}
+watch(liveEvents, applyLive);
 
 async function load() {
+  const before = liveEvents.value;
   try {
     [event.value, registrations.value] = await Promise.all([getEvent(props.id), getRegistrations(props.id)]);
+    if (liveEvents.value !== before) applyLive(liveEvents.value);
   } catch (err) {
     error.value = err;
   }

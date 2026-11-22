@@ -1,15 +1,26 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { liveEvents } from '../live/events.js';
 import { RouterLink } from 'vue-router';
 import { getStats } from '../api/events.js';
 import ErrorMessage from '../components/ErrorMessage.vue';
 
 const stats = ref([]);
 const error = ref(null);
+function applyLive(rows) {
+  if (!rows) return;
+  stats.value = rows.map((event) => ({ ...event,
+    occupancy: Math.round(event.registered / event.capacity * 100) + '%',
+    status: event.registered >= event.capacity ? 'full' : new Date(event.startsAt) < new Date() ? 'past' : 'open'
+  }));
+}
+watch(liveEvents, applyLive);
 
 onMounted(async () => {
+  const before = liveEvents.value;
   try {
     stats.value = await getStats();
+    if (liveEvents.value !== before) applyLive(liveEvents.value);
   } catch (err) {
     error.value = err;
   }
