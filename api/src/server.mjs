@@ -6,6 +6,7 @@ import { env } from './config/env.mjs';
 import { createMailSender } from './mail/sender.mjs';
 import { createMailWorker } from './services/mailWorker.mjs';
 import { initializeDatabase } from './repositories/databaseRepository.mjs';
+import { liveFeed } from './services/liveFeed.mjs';
 
 await initializeDatabase();
 
@@ -22,7 +23,10 @@ let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
+  // SSE connections are long-lived; close them so shutdown can finish.
+  server.closeAllConnections();
   server.close(async () => {
+    await liveFeed.stop();
     await worker.stop();
     await sequelize.close();
   });

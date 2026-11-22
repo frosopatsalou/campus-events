@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import { liveController } from '../controllers/liveController.mjs';
 import { controller } from '../controllers/eventController.mjs';
 import { validate } from '../middleware/validate.mjs';
 import { idSchema, createEventSchema, updateEventSchema, registrationSchema } from '../validation/schemas.mjs';
 export const routes = Router();
 const id = validate(idSchema, 'params');
 routes.get('/health', controller.health);
+routes.get('/live', liveController);
 routes.get('/events', controller.list);
 routes.post('/events', validate(createEventSchema, 'body'), controller.create);
 routes.get('/events/:id', id, controller.detail);
