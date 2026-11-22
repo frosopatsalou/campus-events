@@ -1,4 +1,5 @@
 import { request } from './client.js';
+import { connectLive } from './live.js';
 
 export const getEvents = () => request('/events');
 export const getEvent = (id) => request(`/events/${id}`);
@@ -10,3 +11,4 @@ export const register = (eventId, participant) =>
   request(`/events/${eventId}/registrations`, { method: 'POST', body: participant });
 
 export const getStats = () => request('/stats');
+export const subscribeToEvents = (handlers) => connectLive('/api/live', handlers);
