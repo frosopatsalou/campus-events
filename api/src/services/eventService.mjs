@@ -68,6 +68,11 @@ export const eventService = {
   }),
   register: async (id, data) => (await registerPeople(id, [data]))[0],
   registerPeople,
+  // A consistent snapshot/cursor pair prevents a gap during reconnect.
+  snapshot: () => repository.transaction(async (repo) => ({
+    cursor: await repo.cursor(), events: await repo.summaries()
+  })),
+  changes: (cursor) => repository.changes(cursor),
   // Cache data, calculate the clock-dependent status on every request.
   stats: async () => {
     const rows = await cached('stats', () => repository.summaries());
