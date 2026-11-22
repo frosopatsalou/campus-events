@@ -42,7 +42,9 @@ Requests follow routes → validation → controllers → services → repositor
 
 Existing URLs, response bodies and error shapes are preserved. Full events now correctly reject
 additional registrations. A unique event/email database index prevents duplicate subscriptions.
-Database access is serialized within this single application process, including seat checks and writes.
+Mutations and live snapshots acquire a shared database lock, including seat checks and writes.
+PostgreSQL uses a locked singleton row; local SQLite uses immediate transactions.
+This also orders notification IDs by commit across instances.
 Statistics use grouped registration counts rather than one registration query per event.
 
 ## Reliable confirmation email
@@ -78,9 +80,54 @@ A generation counter prevents an older in-flight read from filling the cache aft
 Values are cloned so callers cannot accidentally modify cached results. API responses use
 Cache-Control: no-store to prevent independent browser/proxy caches hiding successful writes.
 
-This implementation targets one server process/instance. All ordinary writes must go through the
-application. Direct SQL edits can remain cached until TTL expiry; multiple app instances would need
-shared invalidation and database-level concurrency control before scaling.
+Each cached GET checks the latest committed notification ID. A change from another API instance
+clears its local cache too. All ordinary writes must go through the application. Direct SQL edits
+do not create notifications and can remain cached until TTL expiry.
+
+## Assignment 2: MCP and live notifications
+
+See [ASSIGNMENT-2.md](ASSIGNMENT-2.md) for the class explanation, client setup and demonstration steps.
+
+The MCP endpoint is `/mcp`, using the official MCP SDK and stateless Streamable HTTP POST requests.
+An MCP-compatible AI assistant discovers three tools:
+
+- `get_upcoming_events`: events starting now or later, including IDs and remaining seats.
+- `get_past_events`: events that have already started.
+- `register_for_event`: an event ID and a `people` array of names/emails. Groups of up to 20
+  succeed together or roll back together. The existing registration service validates capacity,
+  prevents duplicate subscriptions and queues confirmation emails.
+
+The assistant translates the user's sentence into tool arguments; the backend does not run a model
+or need an AI API key. Configure an MCP client with `http://localhost:3000/mcp` locally or the public
+website's `/mcp` URL after deployment. Different clients have different connection settings.
+The endpoint rejects unapproved hostnames and cross-origin browser requests. Configure
+`MCP_ALLOWED_HOSTS` for a different deployment hostname. Like the existing REST API, this classroom
+demo has no user authentication; host/origin validation does not provide user authorization.
+
+`GET /api/live` streams server-sent events to every connected browser. Committed event creations
+and registrations are stored in a durable public notification log in the same transaction as the
+write. Every API instance reads that log independently, so a shared queue cannot accidentally
+send an update to just one instance. No extra broker account is required. The feed polls once per
+second per active API instance, rather than once per browser: updates normally arrive within
+about a second plus network/database time. It is near real time, not a zero-latency guarantee.
+
+Registration notifications contain only the event ID/title, absolute registered/capacity/remaining
+counts, type and permanent notification ID. No participant name, email or private MailJob payload
+is published. Email retries do not create public notifications. Update/delete changes refresh
+browser data without adding toasts. Event creation adds a `New event: ...` toast; registration adds
+`Someone registered for Hack night — 2 seats left`.
+
+Each new connection receives a consistent current snapshot and notification cursor. It starts at
+that cursor and deliberately does not replay history. The browser discards duplicate/older IDs,
+refreshes on visibility/network restoration, and detects suspension before accepting buffered
+messages. A waking laptop therefore gets current seats without a backlog of old toasts.
+This guarantees at most one displayed toast per committed notification during a live connection;
+it does not guarantee an offline browser sees every registration. Reconnecting skips the offline
+period by design. Seat counters use authoritative snapshots, never blind decrements.
+
+The small-project tradeoff is a database-wide write lock and a growing log. This favors simple
+correctness over high write throughput. A larger system would need log retention and a broker/
+partitioning strategy. Existing email delivery remains at least once, as described above.
 
 ## Deploy: Render + Supabase
 
@@ -95,7 +142,10 @@ name without the prohibited branding specified for this assignment.
    npm run build, then starts with npm start. Dependency installation uses
    npm ci --include=dev so production-mode hosting still installs the build/test tools.
    Checks explicitly use NODE_ENV=test
-   so Vue's test utilities load their testing behavior. Use one instance.
+   so Vue's test utilities load their testing behavior. The free blueprint uses one instance.
+   Multiple production instances must share the same PostgreSQL database. SQLite files are only
+   shared in the local automated two-process test; do not use separate SQLite files on replicas.
+   Seed demo data once before starting replicas, then set SEED_DEMO=false on each instance.
 4. Enter DATABASE_URL, SMTP_URL and MAIL_FROM as private Render environment variables.
    For Brevo SMTP on Render Free, use port 2525 with requireTLS=true and URL-encoded
    SMTP login/key credentials. A Brevo SMTP key is different from an API key.
@@ -140,3 +190,8 @@ The original HTTP integration tests in api/tests/integration are unchanged. Addi
 provider outages/retries, atomic rollback, duplicate registration races, final-seat contention,
 cache expiry, invalidation after mutations, stale in-flight reads, time-sensitive statistics,
 bounded cache storage, SMTP protocol delivery and HTTPS provider behavior.
+New tests cover MCP discovery/tool execution/validation, group rollback, public payload privacy,
+notification rollback, independent feed delivery, browser deduplication/wake behavior and HTTP/
+stream ordering. A test starts two actual API processes against one temporary SQLite database,
+opens both SSE streams, verifies cross-instance cache refresh and races the final seat.
+That local test does not substitute for a PostgreSQL deployment test.

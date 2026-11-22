@@ -1,5 +1,9 @@
 # Assignment submission
 
+Assignment 2 status: MCP and live notifications are currently implemented locally. Publishing
+and live verification are pending review approval. The URLs below are the existing project;
+they are not yet evidence that assignment 2 is deployed.
+
 - GitHub project URL: https://github.com/frosopatsalou/campus-events
 - Working public application URL: https://campus-events-frosopatsalou.onrender.com
 - Stack Overflow sources used:

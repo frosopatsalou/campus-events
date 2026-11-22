@@ -1,5 +1,16 @@
 # Sources used
 
+## Assignment 2 references
+
+- [Official MCP SDK server guide](https://ts.sdk.modelcontextprotocol.io/server)
+  — Tool registration, Zod schemas and stateless Streamable HTTP transport.
+- [Official stateless HTTP example](https://github.com/modelcontextprotocol/typescript-sdk/blob/v1.x/src/examples/server/simpleStatelessStreamableHttp.ts)
+  — Request-scoped server/transport lifecycle and cleanup.
+- [MDN: Using server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
+  — EventSource message format and reconnect behavior for browser notifications.
+- [PostgreSQL: Explicit locking](https://www.postgresql.org/docs/current/explicit-locking.html)
+  — Database row locking to serialize competing seat checks across API instances.
+
 ## Required Stack Overflow references
 
 1. [Send mail as transactionally as possible](https://stackoverflow.com/questions/4013502/send-mail-as-transactionally-as-possible)
