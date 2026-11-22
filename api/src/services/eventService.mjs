@@ -12,6 +12,26 @@ async function mutate(work) {
   readCache.clear();
   return result;
 }
+async function registerPeople(id, people) {
+  return mutate(async (repo) => {
+    const event = await requireEvent(repo, id);
+    let registered = await repo.count(id);
+    const results = [];
+    for (const data of people) {
+      if (await repo.registered(id, data.email)) throw new AppError(409, 'CONFLICT', data.email + ' is already registered for this event');
+      if (registered >= event.capacity) throw new AppError(409, 'CONFLICT', 'Event is full');
+      results.push(await repo.register({ eventId: id, ...data }));
+      await repo.enqueue({ to: data.email, subject: 'You are registered for ' + event.title,
+        text: 'Hi ' + data.name + ',\n\nYour registration for ' + event.title + ' is confirmed.\nLocation: ' + event.location + '\nStarts: ' + new Date(event.startsAt).toISOString() });
+      registered++;
+      await repo.notify('registration.created', {
+        eventId: event.id, title: event.title, registered, capacity: event.capacity,
+        spotsLeft: Math.max(event.capacity - registered, 0)
+      });
+    }
+    return results;
+  });
+}
 export const eventService = {
   health: async () => { await checkDatabase(); return { status: 'ok' }; },
   list: () => readCache.get('events', () => repository.list()),
@@ -37,18 +57,8 @@ export const eventService = {
     await requireEvent(repository, id);
     return repository.registrations(id);
   }),
-  register: (id, data) => mutate(async (repo) => {
-    const event = await requireEvent(repo, id);
-    if (await repo.registered(id, data.email)) throw new AppError(409, 'CONFLICT', data.email + ' is already registered for this event');
-    if (await repo.count(id) >= event.capacity) throw new AppError(409, 'CONFLICT', 'Event is full');
-    const registration = await repo.register({ eventId: id, ...data });
-    await repo.enqueue({ to: data.email, subject: 'You are registered for ' + event.title,
-      text: 'Hi ' + data.name + ',\n\nYour registration for ' + event.title + ' is confirmed.\nLocation: ' + event.location + '\nStarts: ' + new Date(event.startsAt).toISOString() });
-    const registered = await repo.count(id);
-    await repo.notify('registration.created', { eventId: event.id, title: event.title,
-      registered, capacity: event.capacity, spotsLeft: Math.max(event.capacity - registered, 0) });
-    return registration;
-  }),
+  register: async (id, data) => (await registerPeople(id, [data]))[0],
+  registerPeople,
   // Cache data, calculate the clock-dependent status on every request.
   stats: async () => {
     const rows = await readCache.get('stats', () => repository.summaries());
